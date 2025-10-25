@@ -65,22 +65,22 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
         const hasBridge = /(bridge)/.test(text);
         const hasSend = /(send|transfer)/.test(text);
         const toBaz = /(to\s+baz|for\s+baz|baz)/.test(text);
-        const toU2U = /(to\s+u2u|for\s+u2u|u2u)/.test(text);
+        const toCELO = /(to\s+CELO|for\s+CELO|CELO)/.test(text);
 
         const to = (addressMatch ? addressMatch[0] : undefined) as `0x${string}` | undefined;
         const amount = amountMatch ? amountMatch[1] : undefined;
 
         if (hasSwap) {
-            // default direction if ambiguous: U2U -> BAZ when both tokens present
-            const from = toU2U && !toBaz ? "U2U" : (!toU2U && toBaz ? "BAZ" : (text.includes("from baz") ? "BAZ" : "U2U"));
-            const dest = from === "U2U" ? "BAZ" : "U2U";
+            // default direction if ambiguous: CELO -> BAZ when both tokens present
+            const from = toCELO && !toBaz ? "CELO" : (!toCELO && toBaz ? "BAZ" : (text.includes("from baz") ? "BAZ" : "CELO"));
+            const dest = from === "CELO" ? "BAZ" : "CELO";
             return { kind: "swap" as const, from, toToken: dest, amount };
         }
         if (hasBridge) {
             return { kind: "bridge" as const, to, amount };
         }
         if (hasSend) {
-            // If mentions BAZ, use token send; else default to native U2U
+            // If mentions BAZ, use token send; else default to native CELO
             const token = toBaz ? "BAZ" : (text.includes("token baz") ? "BAZ" : undefined);
             return { kind: "send" as const, to, amount, token };
         }
@@ -108,8 +108,8 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
             if (intent.kind === "swap") {
                 if (!intent.amount) throw new Error("No amount found");
                 const wei = parseAmountToWei(intent.amount);
-                if (intent.from === "U2U") {
-                    // U2U -> BAZ
+                if (intent.from === "CELO") {
+                    // CELO -> BAZ
                     if (publicClient) {
                         try {
                             await publicClient.estimateContractGas({
@@ -130,9 +130,9 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
                         value: wei,
                     });
                     if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
-                    toast({ title: "Swap submitted", description: `Swapped ${intent.amount} U2U → ${Number(intent.amount) * 20} BAZ` });
+                    toast({ title: "Swap submitted", description: `Swapped ${intent.amount} CELO → ${Number(intent.amount) * 20} BAZ` });
                 } else {
-                    // BAZ -> U2U
+                    // BAZ -> CELO
                     if (publicClient) {
                         try {
                             await publicClient.estimateContractGas({
@@ -159,7 +159,7 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
                         args: [wei],
                     });
                     if (publicClient) await publicClient.waitForTransactionReceipt({ hash: swapHash });
-                    toast({ title: "Swap submitted", description: `Swapped ${intent.amount} BAZ → ${(Number(intent.amount) / 20).toString()} U2U` });
+                    toast({ title: "Swap submitted", description: `Swapped ${intent.amount} BAZ → ${(Number(intent.amount) / 20).toString()} CELO` });
                 }
             } else if (intent.kind === "bridge") {
                 if (!intent.to) throw new Error("No recipient address found");
@@ -187,7 +187,7 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
                     if (publicClient) await publicClient.waitForTransactionReceipt({ hash: txHash });
                     toast({ title: "Token sent", description: `Sent ${intent.amount} BAZ to ${intent.to}` });
                 } else {
-                    // Native U2U send
+                    // Native CELO send
                     const wei = parseAmountToWei(intent.amount);
                     if (!publicClient) throw new Error("No client");
                     const hash = await publicClient.sendTransaction({
@@ -196,7 +196,7 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
                         value: wei,
                     });
                     await publicClient.waitForTransactionReceipt({ hash });
-                    toast({ title: "U2U sent", description: `Sent ${intent.amount} U2U to ${intent.to}` });
+                    toast({ title: "CELO sent", description: `Sent ${intent.amount} CELO to ${intent.to}` });
                 }
             } else {
                 // No blockchain intent detected, delegate to parent (chat mode)
@@ -212,7 +212,7 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
                 } else {
                     toast({
                         title: "Unrecognized instruction",
-                        description: "Try: swap 1 U2U to BAZ, send 5 BAZ to 0x..., bridge 10 BAZ to 0x..."
+                        description: "Try: swap 1 CELO to BAZ, send 5 BAZ to 0x..., bridge 10 BAZ to 0x..."
                     });
                 }
                 return;

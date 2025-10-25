@@ -118,6 +118,12 @@ export default function AgentPage() {
       nativeCurrency = { name: "U2U", symbol: "U2U", decimals: 18 }
       rpcUrls = ["https://rpc-mainnet.u2u.xyz"]
       blockExplorerUrls = ["https://u2uscan.xyz/"]
+    } else if (targetNetwork === "celo") {
+      chainId = "0xAA044C" // Celo Sepolia chainId 11142220
+      chainName = "Celo Sepolia Testnet"
+      nativeCurrency = { name: "CELO", symbol: "CELO", decimals: 18 }
+      rpcUrls = ["https://forno.celo-sepolia.celo-testnet.org/"]
+      blockExplorerUrls = ["https://celo-sepolia.blockscout.com/"]
     } else if (targetNetwork === "sepolia") {
       chainId = "0xAA36A7" // Sepolia chainId 11155111
       chainName = "Sepolia"
@@ -154,7 +160,7 @@ export default function AgentPage() {
     try {
       const eth = (globalThis as any).ethereum
       if (!eth) throw new Error("Wallet not found")
-      const targetChainIdHex = "0x27" // U2U Mainnet chainId 39
+      const targetChainIdHex = "0xAA044C" // CELO Sepolia chainId 11142220
       try {
         await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: targetChainIdHex }] })
       } catch (switchErr: any) {
@@ -163,11 +169,11 @@ export default function AgentPage() {
             method: "wallet_addEthereumChain",
             params: [
               {
-                chainId: targetChainIdHex,
-                chainName: "U2U Solaris Mainnet",
-                nativeCurrency: { name: "U2U", symbol: "U2U", decimals: 18 },
-                rpcUrls: ["https://rpc-mainnet.u2u.xyz"],
-                blockExplorerUrls: ["https://u2uscan.xyz/"],
+                chainId: targetChainIdHex, // Celo Sepolia chainId 11142220
+                chainName: "Celo Sepolia Testnet",
+                nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
+                rpcUrls: ["https://forno.celo-sepolia.celo-testnet.org/"],
+                blockExplorerUrls: ["https://celo-sepolia.blockscout.com/"],
               },
             ],
           })
@@ -189,8 +195,8 @@ export default function AgentPage() {
   }
 
   function parseIntent(input: string):
-    | { kind: "swap"; from: "U2U" | "BAZ"; toToken: "U2U" | "BAZ"; amount?: string }
-    | { kind: "send"; token?: "BAZ" | "U2U"; to?: `0x${string}`; amount?: string }
+    | { kind: "swap"; from: "CELO" | "BAZ"; toToken: "CELO" | "BAZ"; amount?: string }
+    | { kind: "send"; token?: "BAZ" | "CELO"; to?: `0x${string}`; amount?: string }
     | { kind: "bridge"; amount?: string; fromNet?: "u2u" | "sepolia"; toNet?: "u2u" | "sepolia" }
     | { kind: "unknown" } {
     const text = input.toLowerCase()
@@ -200,24 +206,24 @@ export default function AgentPage() {
     const hasSend = /(\bsend\b|\btransfer\b)/.test(text)
     const hasBridge = /(\bbridge\b)/.test(text)
     const toBaz = /(to\s+baz|for\s+baz|\sbaz\b)/.test(text)
-    const toU2U = /(to\s+u2u|for\s+u2u|\bu2u\b)/.test(text)
+    const toCELO = /(to\s+celo|for\s+celo|\bcelo\b)/.test(text)
     const fromBaz = /(from\s+baz)/.test(text)
-    const fromU2U = /(from\s+u2u)/.test(text)
-    const bazToU2U = /(baz\s*(->|to)\s*u2u)/.test(text)
-    const u2uToBaz = /(u2u\s*(->|to)\s*baz)/.test(text)
+    const fromCELO = /(from\s+celo)/.test(text)
+    const bazToCELO = /(baz\s*(->|to)\s*celo)/.test(text)
+    const celoToBaz = /(celo\s*(->|to)\s*baz)/.test(text)
     const amount = amountMatch ? amountMatch[1] : undefined
     const to = (addrMatch ? (addrMatch[0] as `0x${string}`) : undefined)
     if (hasSwap) {
-      let from: "U2U" | "BAZ" | undefined
-      if (fromBaz || bazToU2U || (toU2U && !toBaz)) from = "BAZ"
-      else if (fromU2U || u2uToBaz || (toBaz && !toU2U)) from = "U2U"
-      else if (toU2U && toBaz) from = undefined
-      if (!from) from = "U2U" // sensible default
-      const dest = from === "U2U" ? "BAZ" : "U2U"
+      let from: "CELO" | "BAZ" | undefined
+      if (fromBaz || bazToCELO || (toCELO && !toBaz)) from = "BAZ"
+      else if (fromCELO || celoToBaz || (toBaz && !toCELO)) from = "CELO"
+      else if (toCELO && toBaz) from = undefined
+      if (!from) from = "CELO" // sensible default
+      const dest = from === "CELO" ? "BAZ" : "CELO"
       return { kind: "swap", from, toToken: dest, amount }
     }
     if (hasSend) {
-      const token: "BAZ" | "U2U" | undefined = toBaz ? "BAZ" : toU2U ? "U2U" : undefined
+      const token: "BAZ" | "CELO" | undefined = toBaz ? "BAZ" : toCELO ? "CELO" : undefined
       return { kind: "send", token, to, amount }
     }
     if (hasBridge) {
@@ -508,7 +514,7 @@ export default function AgentPage() {
       try {
         if (!isConnected || !address) throw new Error("Wallet not connected")
         const wei = parseAmountToWei(intent.amount)
-        if (intent.from === "U2U") {
+        if (intent.from === "CELO") {
           // Native -> BAZ
           try {
             await publicClient?.estimateContractGas({
@@ -528,11 +534,11 @@ export default function AgentPage() {
             value: wei,
           })
           await publicClient?.waitForTransactionReceipt({ hash })
-          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Swap successful: ${intent.amount} U2U → ${Number(intent.amount) * 20} BAZ` }])
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Swap successful: ${intent.amount} CELO → ${Number(intent.amount) * 20} BAZ` }])
           setReward(Math.floor(Math.random() * 10) + 1)
           setOpenCongrats(true)
         } else {
-          // BAZ -> U2U
+          // BAZ -> CELO
           try {
             await publicClient?.estimateContractGas({
               abi: tokenAbi as any,
@@ -556,7 +562,7 @@ export default function AgentPage() {
             args: [wei],
           })
           await publicClient?.waitForTransactionReceipt({ hash: swapHash })
-          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Swap successful: ${intent.amount} BAZ → ${(Number(intent.amount) / 20).toString()} U2U` }])
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Swap successful: ${intent.amount} BAZ → ${(Number(intent.amount) / 20).toString()} CELO` }])
           setReward(Math.floor(Math.random() * 10) + 1)
           setOpenCongrats(true)
         }
@@ -584,11 +590,11 @@ export default function AgentPage() {
           setReward(Math.floor(Math.random() * 10) + 1)
           setOpenCongrats(true)
         } else {
-          // Native U2U send
+          // Native CELO send
           const wei = parseAmountToWei(intent.amount)
           const hash = await publicClient!.sendTransaction({ account: address as `0x${string}`, to: intent.to, value: wei })
           await publicClient?.waitForTransactionReceipt({ hash })
-          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Sent ${intent.amount} U2U to ${intent.to}` }])
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Sent ${intent.amount} CELO to ${intent.to}` }])
           setReward(Math.floor(Math.random() * 10) + 1)
           setOpenCongrats(true)
         }
