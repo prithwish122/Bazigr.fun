@@ -596,7 +596,7 @@ export function BridgeBox() {
             <div className="text-xs text-muted-foreground">{fromAmount || "0"} BAZ</div>
             {chainId && (
               <div className="text-xs text-muted-foreground">
-                Current network: {chainId === 39 ? "U2U" : chainId === 11155111 ? "Sepolia" : `Chain ${chainId}`}
+                Current network: {chainId === 39 ? "U2U" : chainId === 11155111 ? "Sepolia" : "Celo Sepolia Testnet"}
               </div>
             )}
           </div>
