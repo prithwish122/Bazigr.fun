@@ -14,10 +14,12 @@ import {
   ChevronRight,
   LogOut,
   Bot,
+  LayoutDashboard,
 } from "lucide-react"
 import { cn } from "@/app/lib/utils"
 
 const navItems = [
+  { name: "Dashboard", href: "/dashboard/dashboard", icon: LayoutDashboard },
   { name: "Transfer", href: "/dashboard/transfer", icon: ArrowLeftRight },
   { name: "Swap", href: "/dashboard/swap", icon: Repeat },
   { name: "Bridge", href: "/dashboard/bridge", icon: Bridge },
