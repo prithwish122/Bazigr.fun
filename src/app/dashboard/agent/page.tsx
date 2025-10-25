@@ -222,18 +222,18 @@ export default function AgentPage() {
     }
     if (hasBridge) {
       // Enhanced bridge parsing for network detection
-      const fromNet: "u2u" | "sepolia" | undefined = 
-        /from\s+u2u/.test(text) ? "u2u" : 
-        /from\s+sepolia/.test(text) ? "sepolia" : 
-        /u2u\s+to\s+sepolia/.test(text) ? "u2u" :
-        /sepolia\s+to\s+u2u/.test(text) ? "sepolia" : undefined
-      
-      const toNet: "u2u" | "sepolia" | undefined = 
-        /to\s+u2u/.test(text) ? "u2u" : 
-        /to\s+sepolia/.test(text) ? "sepolia" :
-        /u2u\s+to\s+sepolia/.test(text) ? "sepolia" :
-        /sepolia\s+to\s+u2u/.test(text) ? "u2u" : undefined
-      
+      const fromNet: "u2u" | "sepolia" | undefined =
+        /from\s+u2u/.test(text) ? "u2u" :
+          /from\s+sepolia/.test(text) ? "sepolia" :
+            /u2u\s+to\s+sepolia/.test(text) ? "u2u" :
+              /sepolia\s+to\s+u2u/.test(text) ? "sepolia" : undefined
+
+      const toNet: "u2u" | "sepolia" | undefined =
+        /to\s+u2u/.test(text) ? "u2u" :
+          /to\s+sepolia/.test(text) ? "sepolia" :
+            /u2u\s+to\s+sepolia/.test(text) ? "sepolia" :
+              /sepolia\s+to\s+u2u/.test(text) ? "u2u" : undefined
+
       return { kind: "bridge", amount, fromNet, toNet }
     }
     return { kind: "unknown" }
@@ -311,7 +311,7 @@ export default function AgentPage() {
     // Verify we're on Sepolia
     const sepoliaProvider = new ethers.BrowserProvider(eth)
     const sepoliaNetwork = await sepoliaProvider.getNetwork()
-    
+
     if (Number(sepoliaNetwork.chainId) !== 11155111) {
       throw new Error("Failed to switch to Sepolia network")
     }
@@ -319,16 +319,16 @@ export default function AgentPage() {
     // Step 4: Unlock tokens on Sepolia
     const sepoliaSigner = await sepoliaProvider.getSigner()
     const sepoliaBridgeContract = new ethers.Contract(SEPOLIA_BRIDGE_ADDRESS, sepoliaBridgeAbi.abi, sepoliaSigner)
-    
+
     // Check bridge balance first
     console.log("Checking Sepolia bridge balance...")
     const bridgeBalance = await sepoliaBridgeContract.getBridgeBalance()
     console.log("Sepolia bridge balance:", ethers.formatEther(bridgeBalance))
-    
+
     if (bridgeBalance < amountWei) {
       throw new Error(`Insufficient bridge balance. Bridge has ${ethers.formatEther(bridgeBalance)} BAZ, need ${ethers.formatEther(amountWei)} BAZ`)
     }
-    
+
     // Check if nonce is already processed
     console.log("Checking if nonce is processed...")
     const isProcessed = await sepoliaBridgeContract.isNonceProcessed(nonce)
@@ -336,7 +336,7 @@ export default function AgentPage() {
     if (isProcessed) {
       throw new Error("This nonce has already been processed")
     }
-    
+
     // Use selfUnlockTokens function (recommended for user-initiated unlocks)
     try {
       console.log("Attempting selfUnlockTokens with:", {
@@ -344,14 +344,14 @@ export default function AgentPage() {
         nonce: nonce.toString(),
         user: address
       })
-      
+
       const selfUnlockTx = await sepoliaBridgeContract.selfUnlockTokens(amountWei, nonce)
       console.log("Self-unlock transaction sent:", selfUnlockTx.hash)
       await selfUnlockTx.wait()
       console.log("Self-unlock transaction confirmed:", selfUnlockTx.hash)
     } catch (selfUnlockError: any) {
       console.log("Self-unlock failed, trying unlockTokens...", selfUnlockError)
-      
+
       // Try unlockTokens as fallback
       try {
         console.log("Attempting unlockTokens with:", {
@@ -359,7 +359,7 @@ export default function AgentPage() {
           amount: ethers.formatEther(amountWei),
           nonce: nonce.toString()
         })
-        
+
         const unlockTx = await sepoliaBridgeContract.unlockTokens(address, amountWei, nonce)
         console.log("Unlock transaction sent:", unlockTx.hash)
         await unlockTx.wait()
@@ -441,35 +441,35 @@ export default function AgentPage() {
     const u2uProvider = new ethers.BrowserProvider(eth)
     const u2uSigner = await u2uProvider.getSigner()
     const u2uBridgeContract = new ethers.Contract(U2U_BRIDGE_ADDRESS, sepoliaBridgeAbi.abi, u2uSigner)
-    
+
     // Check bridge balance first
     const bridgeBalance = await u2uBridgeContract.getBridgeBalance()
     console.log("U2U bridge balance:", ethers.formatEther(bridgeBalance))
-    
+
     if (bridgeBalance < amountWei) {
       throw new Error(`Insufficient bridge balance. Bridge has ${ethers.formatEther(bridgeBalance)} BAZ, need ${ethers.formatEther(amountWei)} BAZ`)
     }
-    
+
     // Check if nonce is already processed
     const isProcessed = await u2uBridgeContract.isNonceProcessed(nonce)
     console.log("Nonce processed:", isProcessed)
     if (isProcessed) {
       throw new Error("This nonce has already been processed")
     }
-    
+
     // Use selfUnlockTokens function (recommended for user-initiated unlocks)
     try {
       console.log("Attempting selfUnlockTokens with:", {
         amount: ethers.formatEther(amountWei),
         nonce: nonce.toString()
       })
-      
+
       const selfUnlockTx = await u2uBridgeContract.selfUnlockTokens(amountWei, nonce)
       await selfUnlockTx.wait()
       console.log("Self-unlock transaction confirmed:", selfUnlockTx.hash)
     } catch (selfUnlockError: any) {
       console.log("Self-unlock failed, trying unlockTokens...", selfUnlockError)
-      
+
       // Try unlockTokens as fallback
       try {
         console.log("Attempting unlockTokens with:", {
@@ -477,7 +477,7 @@ export default function AgentPage() {
           amount: ethers.formatEther(amountWei),
           nonce: nonce.toString()
         })
-        
+
         const unlockTx = await u2uBridgeContract.unlockTokens(address, amountWei, nonce)
         await unlockTx.wait()
         console.log("Unlock transaction confirmed:", unlockTx.hash)
@@ -519,7 +519,7 @@ export default function AgentPage() {
               value: wei,
               account: address as `0x${string}`,
             })
-          } catch {}
+          } catch { }
           const hash = await writeWithFallback({
             abi: (swapAbi as any).abi || (swapAbi as any),
             functionName: "swapNativeForBaz",
@@ -541,7 +541,7 @@ export default function AgentPage() {
               args: [SWAP_ADDRESS, wei],
               account: address as `0x${string}`,
             })
-          } catch {}
+          } catch { }
           const approveHash = await writeWithFallback({
             abi: tokenAbi as any,
             functionName: "approve",
@@ -669,7 +669,10 @@ export default function AgentPage() {
                 m.role === "user" ? "ml-auto bg-white/20 text-white" : "mr-auto bg-white/10 text-white/90",
               )}
             >
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+              <div
+                className="text-sm leading-relaxed prose prose-invert max-w-none"
+                dangerouslySetInnerHTML={{ __html: m.content }}
+              />
             </div>
           ))}
           {loading && (

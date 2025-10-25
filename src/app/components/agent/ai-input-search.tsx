@@ -92,7 +92,7 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
         if (!input) return;
         // If parent provided onSubmit (chat mode), delegate to it
         if (onSubmit) {
-            try { await onSubmit(input); } catch {}
+            try { await onSubmit(input); } catch { }
             setValue("");
             adjustHeight(true);
             return;
@@ -120,7 +120,7 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
                                 value: wei,
                                 account: address as `0x${string}`,
                             });
-                        } catch {}
+                        } catch { }
                     }
                     const hash = await writeContractAsync({
                         abi: (swapAbi as any).abi || (swapAbi as any),
@@ -142,7 +142,7 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
                                 args: [SWAP_ADDRESS, wei],
                                 account: address as `0x${string}`,
                             });
-                        } catch {}
+                        } catch { }
                     }
                     const approveHash = await writeContractAsync({
                         abi: tokenAbi as any,
@@ -199,7 +199,22 @@ export default function AI_Input_Search({ onSubmit, placeholder }: Props) {
                     toast({ title: "U2U sent", description: `Sent ${intent.amount} U2U to ${intent.to}` });
                 }
             } else {
-                toast({ title: "Unrecognized instruction", description: "Try: swap 1 U2U to BAZ, send 5 BAZ to 0x..., bridge 10 BAZ to 0x..." });
+                // No blockchain intent detected, delegate to parent (chat mode)
+                if (onSubmit) {
+                    try {
+                        await onSubmit(input);
+                    } catch (error) {
+                        toast({
+                            title: "AI Error",
+                            description: "Sorry, I couldn't process that request. Please try again."
+                        });
+                    }
+                } else {
+                    toast({
+                        title: "Unrecognized instruction",
+                        description: "Try: swap 1 U2U to BAZ, send 5 BAZ to 0x..., bridge 10 BAZ to 0x..."
+                    });
+                }
                 return;
             }
         } catch (err: any) {
