@@ -1,0 +1,26 @@
+{
+  "network": "celo-sepolia",
+  "deployer": "0x199831720f23892aF7Bd38643008C6Ff30d5228f",
+  "timestamp": "2025-10-25T22:18:47.750Z",
+  "contracts": {
+    "bazToken": "0xB5692EC21B4f5667E5fAdA7836F050d9CF51E6A9",
+    "wcelo": "0x8C3EBc355cC768dD1e9BaFc085B1f0Cb728C7FcF",
+    "factory": "0xf29E685888FbF4f5AADbA8a3dF2499EfF6BFfE1C",
+    "router": "0xb15B6512458BF9c4e9D92EE6951201E1B5d6F1A1",
+    "masterChef": "0xd6f36ebA3775C25Da19D730A687Dc807b7912449"
+  },
+  "pairs": {
+    "bazWcelo": "0x8e31cdebcDF628aCecf5e4EDAB0A25a9B7a75e14"
+  },
+  "pools": [
+    {
+      "id": 0,
+      "name": "BAZ/WCELO",
+      "allocPoint": 100
+    }
+  ],
+  "config": {
+    "bazPerBlock": "10.0",
+    "startBlock": 8146724
+  }
+}

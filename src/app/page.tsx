@@ -29,7 +29,7 @@ export default function Page() {
           </motion.button>
         </Link>
       </section>
-      <Companies />
+      {/* <Companies /> */}
       <ExpandableCards />
       <WhyChooseUs/>
       <HowItWorks />
