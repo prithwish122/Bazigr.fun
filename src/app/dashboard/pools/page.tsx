@@ -714,7 +714,7 @@ export default function DeFiPage() {
       <div className="space-y-6">
         <div className="text-center">
           <div className="flex items-center justify-center gap-4">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white/90">Bazigr DeFi</h1>
+            {/* <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white/90">Bazigr DeFi</h1> */}
             <Button
               onClick={refreshData}
               variant="outline"
