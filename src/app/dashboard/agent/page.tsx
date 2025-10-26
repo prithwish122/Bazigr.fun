@@ -52,11 +52,17 @@ export default function AgentPage() {
   const SEPOLIA_BRIDGE_ADDRESS = useMemo(() => (
     "0xE8aDCF38C12cB70CcEAcE6cb7fbB1e6e5305550B" as `0x${string}`
   ), [])
+  const U2U_BRIDGE_ADDRESS = useMemo(() => (
+    "0xEA41526ac190C2521e046D98159eCCcC7a05F218" as `0x${string}`
+  ), [])
   const CELO_TOKEN_ADDRESS = useMemo(() => (
     "0xB5692EC21B4f5667E5fAdA7836F050d9CF51E6A9" as `0x${string}`
   ), [])
   const SEPOLIA_TOKEN_ADDRESS = useMemo(() => (
     "0xDf2eEe4b129EA759500c7aDbc748b09cE8487e9c" as `0x${string}`
+  ), [])
+  const U2U_TOKEN_ADDRESS = useMemo(() => (
+    "0xC345f186C6337b8df46B19c8ED026e9d64ab9F80" as `0x${string}`
   ), [])
 
   async function writeWithFallback(params: {
@@ -197,7 +203,7 @@ export default function AgentPage() {
   function parseIntent(input: string):
     | { kind: "swap"; from: "CELO" | "BAZ"; toToken: "CELO" | "BAZ"; amount?: string }
     | { kind: "send"; token?: "BAZ" | "CELO"; to?: `0x${string}`; amount?: string }
-    | { kind: "bridge"; amount?: string; fromNet?: "u2u" | "sepolia"; toNet?: "u2u" | "sepolia" }
+    | { kind: "bridge"; amount?: string; fromNet?: "u2u" | "celo" | "sepolia"; toNet?: "u2u" | "celo" | "sepolia" }
     | { kind: "unknown" } {
     const text = input.toLowerCase()
     const amountMatch = input.match(/(\d+\.?\d*)/)
@@ -228,21 +234,287 @@ export default function AgentPage() {
     }
     if (hasBridge) {
       // Enhanced bridge parsing for network detection
-      const fromNet: "u2u" | "sepolia" | undefined =
+      const fromNet: "u2u" | "celo" | "sepolia" | undefined =
         /from\s+u2u/.test(text) ? "u2u" :
-          /from\s+sepolia/.test(text) ? "sepolia" :
-            /u2u\s+to\s+sepolia/.test(text) ? "u2u" :
-              /sepolia\s+to\s+u2u/.test(text) ? "sepolia" : undefined
+          /from\s+celo/.test(text) ? "celo" :
+            /from\s+sepolia/.test(text) ? "sepolia" :
+              /u2u\s+to\s+sepolia/.test(text) ? "u2u" :
+                /celo\s+to\s+sepolia/.test(text) ? "celo" :
+                  /sepolia\s+to\s+(u2u|celo)/.test(text) ? "sepolia" : undefined
 
-      const toNet: "u2u" | "sepolia" | undefined =
+      const toNet: "u2u" | "celo" | "sepolia" | undefined =
         /to\s+u2u/.test(text) ? "u2u" :
-          /to\s+sepolia/.test(text) ? "sepolia" :
-            /u2u\s+to\s+sepolia/.test(text) ? "sepolia" :
-              /sepolia\s+to\s+u2u/.test(text) ? "u2u" : undefined
+          /to\s+celo/.test(text) ? "celo" :
+            /to\s+sepolia/.test(text) ? "sepolia" :
+              /u2u\s+to\s+sepolia/.test(text) ? "sepolia" :
+                /celo\s+to\s+sepolia/.test(text) ? "sepolia" :
+                  /sepolia\s+to\s+u2u/.test(text) ? "u2u" :
+                    /sepolia\s+to\s+celo/.test(text) ? "celo" : undefined
 
       return { kind: "bridge", amount, fromNet, toNet }
     }
     return { kind: "unknown" }
+  }
+
+  async function bridgeFromCeloToSepolia(amount: number) {
+    const eth = (globalThis as any).ethereum
+    if (!eth) {
+      throw new Error("Wallet provider not found")
+    }
+
+    const provider = new ethers.BrowserProvider(eth)
+    const signer = await provider.getSigner()
+    const amountWei = ethers.parseEther(amount.toString())
+
+    // Check if we're on the correct network
+    const network = await provider.getNetwork()
+    if (Number(network.chainId) !== 11142220) {
+      throw new Error("Please switch to CELO network to bridge from CELO")
+    }
+
+    // Step 1: Approve bridge to spend tokens
+    const tokenContract = new ethers.Contract(CELO_TOKEN_ADDRESS, tokenAbi, signer)
+    const approveTx = await tokenContract.approve(CELO_BRIDGE_ADDRESS, amountWei)
+    await approveTx.wait()
+
+    // Step 2: Lock tokens in bridge
+    const bridgeContract = new ethers.Contract(CELO_BRIDGE_ADDRESS, bridgeAbi, signer)
+    const lockTx = await bridgeContract.lockTokens(amountWei)
+    const lockReceipt = await lockTx.wait()
+    console.log("Lock transaction confirmed:", lockTx.hash)
+
+    // Extract the nonce from the TokensLocked event
+    const lockEvent = lockReceipt.logs.find((log: any) => {
+      try {
+        const parsed = bridgeContract.interface.parseLog(log)
+        return parsed?.name === "TokensLocked"
+      } catch {
+        return false
+      }
+    })
+
+    if (!lockEvent) {
+      throw new Error("Failed to find TokensLocked event")
+    }
+
+    const parsedEvent = bridgeContract.interface.parseLog(lockEvent)
+    const nonce = parsedEvent?.args.nonce
+
+    // Step 3: Immediately trigger MetaMask network switch popup
+    const sepoliaChainId = "0xAA36A7" // Sepolia chainId 11155111
+    try {
+      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: sepoliaChainId }] })
+    } catch (switchErr: any) {
+      if (switchErr?.code === 4902) {
+        await eth.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: sepoliaChainId,
+              chainName: "Sepolia",
+              nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
+              rpcUrls: ["https://ethereum-sepolia.publicnode.com"],
+              blockExplorerUrls: ["https://sepolia.etherscan.io"],
+            },
+          ],
+        })
+      } else {
+        throw switchErr
+      }
+    }
+
+    // Brief wait for network switch to propagate
+    await new Promise(resolve => setTimeout(resolve, 1500))
+
+    // Verify we're on Sepolia
+    const sepoliaProvider = new ethers.BrowserProvider(eth)
+    const sepoliaNetwork = await sepoliaProvider.getNetwork()
+
+    if (Number(sepoliaNetwork.chainId) !== 11155111) {
+      throw new Error("Failed to switch to Sepolia network")
+    }
+
+    // Step 4: Unlock tokens on Sepolia
+    const sepoliaSigner = await sepoliaProvider.getSigner()
+    const sepoliaBridgeContract = new ethers.Contract(SEPOLIA_BRIDGE_ADDRESS, sepoliaBridgeAbi.abi, sepoliaSigner)
+
+    // Check bridge balance first
+    console.log("Checking Sepolia bridge balance...")
+    const bridgeBalance = await sepoliaBridgeContract.getBridgeBalance()
+    console.log("Sepolia bridge balance:", ethers.formatEther(bridgeBalance))
+
+    if (bridgeBalance < amountWei) {
+      throw new Error(`Insufficient bridge balance. Bridge has ${ethers.formatEther(bridgeBalance)} BAZ, need ${ethers.formatEther(amountWei)} BAZ`)
+    }
+
+    // Check if nonce is already processed
+    console.log("Checking if nonce is processed...")
+    const isProcessed = await sepoliaBridgeContract.isNonceProcessed(nonce)
+    console.log("Nonce processed:", isProcessed)
+    if (isProcessed) {
+      throw new Error("This nonce has already been processed")
+    }
+
+    // Use selfUnlockTokens function (recommended for user-initiated unlocks)
+    try {
+      console.log("Attempting selfUnlockTokens with:", {
+        amount: ethers.formatEther(amountWei),
+        nonce: nonce.toString(),
+        user: address
+      })
+
+      const selfUnlockTx = await sepoliaBridgeContract.selfUnlockTokens(amountWei, nonce)
+      console.log("Self-unlock transaction sent:", selfUnlockTx.hash)
+      await selfUnlockTx.wait()
+      console.log("Self-unlock transaction confirmed:", selfUnlockTx.hash)
+    } catch (selfUnlockError: any) {
+      console.log("Self-unlock failed, trying unlockTokens...", selfUnlockError)
+
+      // Try unlockTokens as fallback
+      try {
+        console.log("Attempting unlockTokens with:", {
+          user: address,
+          amount: ethers.formatEther(amountWei),
+          nonce: nonce.toString()
+        })
+
+        const unlockTx = await sepoliaBridgeContract.unlockTokens(address, amountWei, nonce)
+        console.log("Unlock transaction sent:", unlockTx.hash)
+        await unlockTx.wait()
+        console.log("Unlock transaction confirmed:", unlockTx.hash)
+      } catch (unlockError: any) {
+        console.log("Both unlock methods failed:", unlockError)
+        throw new Error(`Failed to unlock tokens: ${unlockError?.shortMessage || unlockError?.message || "Unknown error"}`)
+      }
+    }
+  }
+
+  async function bridgeFromSepoliaToCelo(amount: number) {
+    const eth = (globalThis as any).ethereum
+    if (!eth) {
+      throw new Error("Wallet provider not found")
+    }
+
+    const provider = new ethers.BrowserProvider(eth)
+    const signer = await provider.getSigner()
+    const amountWei = ethers.parseEther(amount.toString())
+
+    // Check if we're on the correct network
+    const network = await provider.getNetwork()
+    if (Number(network.chainId) !== 11155111) {
+      throw new Error("Please switch to Sepolia network to bridge from Sepolia")
+    }
+
+    // Step 1: Approve bridge to spend tokens
+    const tokenContract = new ethers.Contract(SEPOLIA_TOKEN_ADDRESS, tokenAbi, signer)
+    const approveTx = await tokenContract.approve(SEPOLIA_BRIDGE_ADDRESS, amountWei)
+    await approveTx.wait()
+
+    // Step 2: Lock tokens in bridge
+    const bridgeContract = new ethers.Contract(SEPOLIA_BRIDGE_ADDRESS, sepoliaBridgeAbi.abi, signer)
+    const lockTx = await bridgeContract.lockTokens(amountWei)
+    const lockReceipt = await lockTx.wait()
+    console.log("Lock transaction confirmed:", lockTx.hash)
+
+    // Extract the nonce from the TokensLocked event
+    const lockEvent = lockReceipt.logs.find((log: any) => {
+      try {
+        const parsed = bridgeContract.interface.parseLog(log)
+        return parsed?.name === "TokensLocked"
+      } catch {
+        return false
+      }
+    })
+
+    if (!lockEvent) {
+      throw new Error("Failed to find TokensLocked event")
+    }
+
+    const parsedEvent = bridgeContract.interface.parseLog(lockEvent)
+    const nonce = parsedEvent?.args.nonce
+
+    // Step 3: Immediately trigger MetaMask network switch popup
+    const celoChainId = "0xAA044C" // Celo Sepolia chainId 11142220
+    try {
+      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: celoChainId }] })
+    } catch (switchErr: any) {
+      if (switchErr?.code === 4902) {
+        await eth.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: celoChainId,
+              chainName: "Celo Sepolia Testnet",
+              nativeCurrency: { name: "CELO", symbol: "CELO", decimals: 18 },
+              rpcUrls: ["https://forno.celo-sepolia.celo-testnet.org/"],
+              blockExplorerUrls: ["https://celo-sepolia.blockscout.com/"],
+            },
+          ],
+        })
+      } else {
+        throw switchErr
+      }
+    }
+
+    // Brief wait for network switch to propagate
+    await new Promise(resolve => setTimeout(resolve, 1500))
+
+    // Verify we're on CELO
+    const celoProvider = new ethers.BrowserProvider(eth)
+    const celoNetwork = await celoProvider.getNetwork()
+
+    if (Number(celoNetwork.chainId) !== 11142220) {
+      throw new Error("Failed to switch to CELO network")
+    }
+
+    // Step 4: Unlock tokens on CELO
+    const celoSigner = await celoProvider.getSigner()
+    const celoBridgeContract = new ethers.Contract(CELO_BRIDGE_ADDRESS, sepoliaBridgeAbi.abi, celoSigner)
+
+    // Check bridge balance first
+    const bridgeBalance = await celoBridgeContract.getBridgeBalance()
+    console.log("CELO bridge balance:", ethers.formatEther(bridgeBalance))
+
+    if (bridgeBalance < amountWei) {
+      throw new Error(`Insufficient bridge balance. Bridge has ${ethers.formatEther(bridgeBalance)} BAZ, need ${ethers.formatEther(amountWei)} BAZ`)
+    }
+
+    // Check if nonce is already processed
+    const isProcessed = await celoBridgeContract.isNonceProcessed(nonce)
+    console.log("Nonce processed:", isProcessed)
+    if (isProcessed) {
+      throw new Error("This nonce has already been processed")
+    }
+
+    // Use selfUnlockTokens function (recommended for user-initiated unlocks)
+    try {
+      console.log("Attempting selfUnlockTokens with:", {
+        amount: ethers.formatEther(amountWei),
+        nonce: nonce.toString()
+      })
+
+      const selfUnlockTx = await celoBridgeContract.selfUnlockTokens(amountWei, nonce)
+      await selfUnlockTx.wait()
+      console.log("Self-unlock transaction confirmed:", selfUnlockTx.hash)
+    } catch (selfUnlockError: any) {
+      console.log("Self-unlock failed, trying unlockTokens...", selfUnlockError)
+
+      // Try unlockTokens as fallback
+      try {
+        console.log("Attempting unlockTokens with:", {
+          user: address,
+          amount: ethers.formatEther(amountWei),
+          nonce: nonce.toString()
+        })
+
+        const unlockTx = await celoBridgeContract.unlockTokens(address, amountWei, nonce)
+        await unlockTx.wait()
+        console.log("Unlock transaction confirmed:", unlockTx.hash)
+      } catch (unlockError: any) {
+        console.log("Both unlock methods failed:", unlockError)
+        throw new Error(`Failed to unlock tokens: ${unlockError?.shortMessage || unlockError?.message || "Unknown error"}`)
+      }
+    }
   }
 
   async function bridgeFromU2UToSepolia(amount: number) {
@@ -270,6 +542,7 @@ export default function AgentPage() {
     const bridgeContract = new ethers.Contract(U2U_BRIDGE_ADDRESS, bridgeAbi, signer)
     const lockTx = await bridgeContract.lockTokens(amountWei)
     const lockReceipt = await lockTx.wait()
+    console.log("Lock transaction confirmed:", lockTx.hash)
 
     // Extract the nonce from the TokensLocked event
     const lockEvent = lockReceipt.logs.find((log: any) => {
@@ -288,7 +561,7 @@ export default function AgentPage() {
     const parsedEvent = bridgeContract.interface.parseLog(lockEvent)
     const nonce = parsedEvent?.args.nonce
 
-    // Step 3: Switch to Sepolia and unlock tokens
+    // Step 3: Immediately trigger MetaMask network switch popup
     const sepoliaChainId = "0xAA36A7" // Sepolia chainId 11155111
     try {
       await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: sepoliaChainId }] })
@@ -311,8 +584,8 @@ export default function AgentPage() {
       }
     }
 
-    // Wait for network switch to complete
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    // Brief wait for network switch to propagate
+    await new Promise(resolve => setTimeout(resolve, 1500))
 
     // Verify we're on Sepolia
     const sepoliaProvider = new ethers.BrowserProvider(eth)
@@ -402,6 +675,7 @@ export default function AgentPage() {
     const bridgeContract = new ethers.Contract(SEPOLIA_BRIDGE_ADDRESS, sepoliaBridgeAbi.abi, signer)
     const lockTx = await bridgeContract.lockTokens(amountWei)
     const lockReceipt = await lockTx.wait()
+    console.log("Lock transaction confirmed:", lockTx.hash)
 
     // Extract the nonce from the TokensLocked event
     const lockEvent = lockReceipt.logs.find((log: any) => {
@@ -420,7 +694,7 @@ export default function AgentPage() {
     const parsedEvent = bridgeContract.interface.parseLog(lockEvent)
     const nonce = parsedEvent?.args.nonce
 
-    // Step 3: Switch to U2U and unlock tokens
+    // Step 3: Immediately trigger MetaMask network switch popup
     const u2uChainId = "0x27" // U2U Mainnet chainId 39
     try {
       await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: u2uChainId }] })
@@ -442,6 +716,9 @@ export default function AgentPage() {
         throw switchErr
       }
     }
+
+    // Brief wait for network switch to propagate
+    await new Promise(resolve => setTimeout(resolve, 1500))
 
     // Step 4: Unlock tokens on U2U
     const u2uProvider = new ethers.BrowserProvider(eth)
@@ -590,10 +867,14 @@ export default function AgentPage() {
           setReward(Math.floor(Math.random() * 10) + 1)
           setOpenCongrats(true)
         } else {
-          // Native CELO send
+          // Native CELO send via ethers
           const wei = parseAmountToWei(intent.amount)
-          const hash = await publicClient!.sendTransaction({ account: address as `0x${string}`, to: intent.to, value: wei })
-          await publicClient?.waitForTransactionReceipt({ hash })
+          const eth = (globalThis as any).ethereum
+          if (!eth) throw new Error("Wallet not found")
+          const provider = new ethers.BrowserProvider(eth)
+          const signer = await provider.getSigner()
+          const tx = await signer.sendTransaction({ to: intent.to, value: wei })
+          await tx.wait()
           setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Sent ${intent.amount} CELO to ${intent.to}` }])
           setReward(Math.floor(Math.random() * 10) + 1)
           setOpenCongrats(true)
@@ -612,7 +893,19 @@ export default function AgentPage() {
         const amount = parseFloat(intent.amount)
         if (amount <= 0) throw new Error("Amount must be greater than 0")
 
-        if (intent.fromNet === "u2u" && intent.toNet === "sepolia") {
+        if (intent.fromNet === "celo" && intent.toNet === "sepolia") {
+          // Bridge from CELO to Sepolia
+          await bridgeFromCeloToSepolia(amount)
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Bridged ${intent.amount} BAZ from CELO → Sepolia` }])
+          setReward(Math.floor(Math.random() * 10) + 1)
+          setOpenCongrats(true)
+        } else if (intent.fromNet === "sepolia" && intent.toNet === "celo") {
+          // Bridge from Sepolia to CELO
+          await bridgeFromSepoliaToCelo(amount)
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Bridged ${intent.amount} BAZ from Sepolia → CELO` }])
+          setReward(Math.floor(Math.random() * 10) + 1)
+          setOpenCongrats(true)
+        } else if (intent.fromNet === "u2u" && intent.toNet === "sepolia") {
           // Bridge from U2U to Sepolia
           await bridgeFromU2UToSepolia(amount)
           setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `Bridged ${intent.amount} BAZ from U2U → Sepolia` }])
@@ -625,7 +918,7 @@ export default function AgentPage() {
           setReward(Math.floor(Math.random() * 10) + 1)
           setOpenCongrats(true)
         } else {
-          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: "Specify networks like: bridge 10 BAZ from u2u to sepolia or bridge 5 BAZ from sepolia to u2u" }])
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: "Specify networks like: bridge 10 BAZ from celo to sepolia or bridge 5 BAZ from sepolia to celo" }])
         }
       } catch (e: any) {
         setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: e?.message || "Bridge failed" }])
