@@ -23,11 +23,11 @@ export default function HowItWorks() {
       subtitle: "Rewards, Games & Leaderboard",
       description:
         "Turn every on-chain move into fun — play mini-games after transactions, complete daily quests, and climb the leaderboard.",
-      extra: "Redeem your U2U tokens for real prizes or reinvest them to boost your DeFi journey.",
+      extra: "Redeem your Celo Sepolia Testnet tokens for real prizes or reinvest them to boost your DeFi journey.",
       details: [
         "Mini-games after every transaction",
         "Daily quests and monthly leaderboard",
-        "Redeem U2U tokens for real rewards",
+        "Redeem Celo Sepolia Testnet tokens for real rewards",
       ],
     },
   ]

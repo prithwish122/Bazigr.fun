@@ -27,7 +27,7 @@ The platform provides a complete decentralized exchange (DEX) experience with **
 ---
 
 ## 🏗️ Project Architecture
-
+ 
 ```mermaid
 graph TB
     subgraph Frontend["🖥️ Frontend Layer (Next.js)"]

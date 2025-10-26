@@ -16,12 +16,12 @@ export default function FAQ() {
     {
       question: "How do I start using Bazigr?",
       answer:
-        "Simply connect your wallet, perform any DeFi action on U2U, and start earning. No KYC, no signup — just play, transact, and earn.",
+        "Simply connect your wallet, perform any DeFi action on Celo Sepolia Testnet, and start earning. No KYC, no signup — just play, transact, and earn.",
     },
     {
       question: "What kind of rewards can I earn?",
       answer:
-        "You earn instant cashback, XP points, and U2U tokens that can be redeemed for real prizes or used to unlock mini-games and boosts.",
+        "You earn instant cashback, XP points, and Celo Sepolia Testnet tokens that can be redeemed for real prizes or used to unlock mini-games and boosts.",
     },
     {
       question: "Is Bazigr beginner-friendly?",
@@ -31,7 +31,7 @@ export default function FAQ() {
     {
       question: "How does the leaderboard work?",
       answer:
-        "Every transaction, quest, and game adds to your score. At the end of each month, top players win bonus U2U tokens and exclusive in-game rewards.",
+        "Every transaction, quest, and game adds to your score. At the end of each month, top players win bonus Celo Sepolia Testnet tokens and exclusive in-game rewards.",
     },
   ]
 
