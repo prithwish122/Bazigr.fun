@@ -16,7 +16,7 @@ export default function HowItWorks() {
         "Perform DeFi actions: swap, bridge, lend, stake",
         "Earn cashback and XP instantly",
       ],
-    },
+    }, 
     {
       id: "02",
       title: "Earn & Rise",
