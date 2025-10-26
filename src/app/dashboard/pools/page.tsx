@@ -35,6 +35,16 @@ const ERC20_ABI = [
   },
   {
     inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    name: "transfer",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
       { name: "owner", type: "address" },
       { name: "spender", type: "address" },
     ],
@@ -79,6 +89,16 @@ export default function DeFiPage() {
 
   // Loading states
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<string>("");
+
+  // Manual refresh function
+  const refreshData = () => {
+    setIsRefreshing(true);
+    setRefreshTrigger(prev => prev + 1);
+    setTimeout(() => setIsRefreshing(false), 1000);
+  };
 
   // Fetch balances and pool data
   useEffect(() => {
@@ -86,26 +106,35 @@ export default function DeFiPage() {
 
     const fetchData = async () => {
       try {
-        // Fetch balances
+        console.log("Fetching pool data at", new Date().toLocaleTimeString());
+        
+        // Get latest block to force fresh read
+        const latestBlock = await publicClient.getBlockNumber();
+        console.log("Latest block:", latestBlock);
+        
+        // Fetch balances with blockNumber to prevent caching
         const [baz, wcelo, celo, lp] = await Promise.all([
           publicClient.readContract({
             address: DEFI_CONTRACTS.BAZ_TOKEN as Address,
             abi: ERC20_ABI,
             functionName: "balanceOf",
             args: [address],
+            blockNumber: latestBlock,
           }),
           publicClient.readContract({
             address: DEFI_CONTRACTS.WCELO as Address,
             abi: ERC20_ABI,
             functionName: "balanceOf",
             args: [address],
+            blockNumber: latestBlock,
           }),
-          publicClient.getBalance({ address }),
+          publicClient.getBalance({ address, blockNumber: latestBlock }),
           publicClient.readContract({
             address: DEFI_CONTRACTS.BAZ_WCELO_PAIR as Address,
             abi: ERC20_ABI,
             functionName: "balanceOf",
             args: [address],
+            blockNumber: latestBlock,
           }),
         ]);
 
@@ -114,25 +143,33 @@ export default function DeFiPage() {
         setCeloBalance(formatUnits(celo, 18));
         setLpBalance(formatUnits(lp, 18));
 
-        // Fetch pool reserves
+        // Fetch pool reserves with fresh block
         const reserves = await publicClient.readContract({
           address: DEFI_CONTRACTS.BAZ_WCELO_PAIR as Address,
           abi: PAIR_ABI,
           functionName: "getReserves",
+          blockNumber: latestBlock,
         });
 
         const token0 = await publicClient.readContract({
           address: DEFI_CONTRACTS.BAZ_WCELO_PAIR as Address,
           abi: PAIR_ABI,
           functionName: "token0",
+          blockNumber: latestBlock,
         });
 
         const isBazToken0 = (token0 as string).toLowerCase() === DEFI_CONTRACTS.BAZ_TOKEN.toLowerCase();
         const [reserve0, reserve1] = reserves as [bigint, bigint, number];
-        setPoolReserves({
+        
+        const newReserves = {
           baz: formatUnits(isBazToken0 ? reserve0 : reserve1, 18),
           wcelo: formatUnits(isBazToken0 ? reserve1 : reserve0, 18),
-        });
+        };
+        
+        console.log("Pool reserves updated:", newReserves);
+        console.log("Raw reserves:", { reserve0: reserve0.toString(), reserve1: reserve1.toString() });
+        setPoolReserves(newReserves);
+        setLastUpdate(new Date().toLocaleTimeString());
 
         // Fetch farming data
         const [userStaked, pending, poolTotalStaked] = await Promise.all([
@@ -141,18 +178,21 @@ export default function DeFiPage() {
             abi: MASTERCHEF_ABI,
             functionName: "getUserStaked",
             args: [BigInt(0), address],
+            blockNumber: latestBlock,
           }),
           publicClient.readContract({
             address: DEFI_CONTRACTS.MASTERCHEF as Address,
             abi: MASTERCHEF_ABI,
             functionName: "pendingBAZ",
             args: [BigInt(0), address],
+            blockNumber: latestBlock,
           }),
           publicClient.readContract({
             address: DEFI_CONTRACTS.MASTERCHEF as Address,
             abi: MASTERCHEF_ABI,
             functionName: "getPoolTotalStaked",
             args: [BigInt(0)],
+            blockNumber: latestBlock,
           }),
         ]);
         setStakedAmount(formatUnits(userStaked as bigint, 18));
@@ -164,9 +204,9 @@ export default function DeFiPage() {
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 10000); // Refresh every 10s
+    const interval = setInterval(fetchData, 5000); // Refresh every 5s (faster)
     return () => clearInterval(interval);
-  }, [isConnected, address, publicClient]);
+  }, [isConnected, address, publicClient, refreshTrigger]); // Added refreshTrigger
 
   // Calculate swap output
   useEffect(() => {
@@ -238,70 +278,160 @@ export default function DeFiPage() {
     }
   };
 
-  // Add liquidity
+  // Add liquidity - Using direct pair.mint() instead of router.addLiquidity()
+  // This is a workaround because router.addLiquidity() fails with status 0
   const handleAddLiquidity = async () => {
-    if (!walletClient || !address) return;
+    if (!walletClient || !address || !publicClient) return;
+
+    if (!bazAmount || !wceloAmount) {
+      toast({
+        title: "Error",
+        description: "Please enter both BAZ and WCELO amounts",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       setIsLoading(true);
       const bazAmt = parseUnits(bazAmount, 18);
       const wceloAmt = parseUnits(wceloAmount, 18);
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 minutes
 
-      // Approve tokens
-      const bazApproveHash = await walletClient.writeContract({
+      // Check balances first
+      const [bazBal, wceloBal] = await Promise.all([
+        publicClient.readContract({
+          address: DEFI_CONTRACTS.BAZ_TOKEN as Address,
+          abi: ERC20_ABI,
+          functionName: "balanceOf",
+          args: [address],
+        }),
+        publicClient.readContract({
+          address: DEFI_CONTRACTS.WCELO as Address,
+          abi: ERC20_ABI,
+          functionName: "balanceOf",
+          args: [address],
+        }),
+      ]);
+
+      if (bazBal < bazAmt) {
+        toast({
+          title: "Insufficient Balance",
+          description: `You need ${formatUnits(bazAmt, 18)} BAZ but only have ${formatUnits(bazBal as bigint, 18)}`,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      if (wceloBal < wceloAmt) {
+        toast({
+          title: "Insufficient Balance",
+          description: `You need ${formatUnits(wceloAmt, 18)} WCELO but only have ${formatUnits(wceloBal as bigint, 18)}`,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      toast({
+        title: "Step 1/3: Transferring BAZ...",
+        description: `Sending ${formatUnits(bazAmt, 18)} BAZ to pool`,
+      });
+
+      // Transfer tokens directly to pair contract
+      const bazTransferHash = await walletClient.writeContract({
         address: DEFI_CONTRACTS.BAZ_TOKEN as Address,
         abi: ERC20_ABI,
-        functionName: "approve",
-        args: [DEFI_CONTRACTS.ROUTER as Address, bazAmt],
+        functionName: "transfer",
+        args: [DEFI_CONTRACTS.BAZ_WCELO_PAIR as Address, bazAmt],
       });
 
-      await publicClient!.waitForTransactionReceipt({ hash: bazApproveHash });
+      const bazReceipt = await publicClient.waitForTransactionReceipt({ 
+        hash: bazTransferHash,
+        confirmations: 2 
+      });
 
-      const wceloApproveHash = await walletClient.writeContract({
+      if (bazReceipt.status !== 'success') {
+        throw new Error("BAZ transfer failed");
+      }
+
+      toast({
+        title: "Step 2/3: Transferring WCELO...",
+        description: `Sending ${formatUnits(wceloAmt, 18)} WCELO to pool`,
+      });
+
+      const wceloTransferHash = await walletClient.writeContract({
         address: DEFI_CONTRACTS.WCELO as Address,
         abi: ERC20_ABI,
-        functionName: "approve",
-        args: [DEFI_CONTRACTS.ROUTER as Address, wceloAmt],
+        functionName: "transfer",
+        args: [DEFI_CONTRACTS.BAZ_WCELO_PAIR as Address, wceloAmt],
       });
 
-      await publicClient!.waitForTransactionReceipt({ hash: wceloApproveHash });
-
-      // Add liquidity
-      const hash = await walletClient.writeContract({
-        address: DEFI_CONTRACTS.ROUTER as Address,
-        abi: ROUTER_ABI,
-        functionName: "addLiquidity",
-        args: [
-          DEFI_CONTRACTS.BAZ_TOKEN as Address,
-          DEFI_CONTRACTS.WCELO as Address,
-          bazAmt,
-          wceloAmt,
-          (bazAmt * BigInt(95)) / BigInt(100), // 5% slippage
-          (wceloAmt * BigInt(95)) / BigInt(100),
-          address,
-          deadline,
-        ],
+      const wceloReceipt = await publicClient.waitForTransactionReceipt({ 
+        hash: wceloTransferHash,
+        confirmations: 2
       });
+
+      if (wceloReceipt.status !== 'success') {
+        throw new Error("WCELO transfer failed");
+      }
 
       toast({
-        title: "Adding Liquidity...",
-        description: `Transaction: ${hash}`,
+        title: "Step 3/3: Minting LP tokens...",
+        description: "Finalizing liquidity addition",
       });
 
-      await publicClient!.waitForTransactionReceipt({ hash });
-
-      toast({
-        title: "Success!",
-        description: "Liquidity added successfully",
+      // Call mint on pair contract
+      const mintHash = await walletClient.writeContract({
+        address: DEFI_CONTRACTS.BAZ_WCELO_PAIR as Address,
+        abi: PAIR_ABI,
+        functionName: "mint",
+        args: [address],
       });
 
-      setBazAmount("");
-      setWceloAmount("");
+      const mintReceipt = await publicClient.waitForTransactionReceipt({ 
+        hash: mintHash,
+        confirmations: 2 
+      });
+
+      if (mintReceipt.status === 'success') {
+        toast({
+          title: "Success! 🎉",
+          description: `Liquidity added! TX: ${mintHash.slice(0, 10)}...`,
+        });
+
+        setBazAmount("");
+        setWceloAmount("");
+        
+        // Trigger immediate data refresh
+        toast({
+          title: "Refreshing data...",
+          description: "Updating pool reserves and balances",
+        });
+        
+        setTimeout(() => {
+          refreshData();
+        }, 2000); // Wait 2s for block confirmation
+      } else {
+        throw new Error("Mint transaction failed");
+      }
     } catch (error: any) {
+      console.error("Add liquidity error:", error);
+      
+      let errorMessage = "Failed to add liquidity";
+      if (error.message?.includes("insufficient")) {
+        errorMessage = "Insufficient balance";
+      } else if (error.message?.includes("user rejected")) {
+        errorMessage = "Transaction rejected by user";
+      } else if (error.shortMessage) {
+        errorMessage = error.shortMessage;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       toast({
-        title: "Error",
-        description: error.message || "Failed to add liquidity",
+        title: "Error Adding Liquidity",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -583,10 +713,34 @@ export default function DeFiPage() {
 
       <div className="space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white/90">Bazigr DeFi</h1>
+          <div className="flex items-center justify-center gap-4">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white/90">Bazigr DeFi</h1>
+            <Button
+              onClick={refreshData}
+              variant="outline"
+              size="sm"
+              disabled={isRefreshing}
+              className="bg-white/5 border-white/10 text-white/70 hover:bg-white/10"
+              title="Refresh pool data"
+            >
+              <svg 
+                className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </Button>
+          </div>
           <p className="text-white/60">
             Swap, provide liquidity, and earn rewards on Celo
           </p>
+          {lastUpdate && (
+            <p className="text-xs text-white/40 mt-1">
+              Last updated: {lastUpdate}
+            </p>
+          )}
         </div>
 
         {/* Balance Cards */}
