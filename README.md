@@ -15,6 +15,11 @@
 | **UniswapV2 Router** | `0xb15B6512458BF9c4e9D92EE6951201E1B5d6F1A1` | [View]https://sepolia.celoscan.io/address/0xb15B6512458BF9c4e9D92EE6951201E1B5d6F1A1) |
 | **MasterChef (Farming)** | `0xd6f36ebA3775C25Da19D730A687Dc807b7912449` | [View]https://sepolia.celoscan.io/address/0xd6f36ebA3775C25Da19D730A687Dc807b7912449) |
 | **BAZ/WCELO Liquidity Pair** | `0x8e31cdebcDF628aCecf5e4EDAB0A25a9B7a75e14` | [View]https://sepolia.celoscan.io/address/0x8e31cdebcDF628aCecf5e4EDAB0A25a9B7a75e14) |
+| **SWAP** | `0xfE053B49CE20845E6c492A575daCDD5ab7d3038D` | [View]https://sepolia.celoscan.io/address/0xfE053B49CE20845E6c492A575daCDD5ab7d3038D) |
+| **Bridge** | `0x118b30B86500239442744A73F1384D97F8C9B63C` | [View]https://sepolia.celoscan.io/address/0x118b30B86500239442744A73F1384D97F8C9B63C) |
+
+
+
 
 ---
 
